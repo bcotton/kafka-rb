@@ -21,7 +21,7 @@ require 'rspec/core/rake_task'
 
 spec = Gem::Specification.new do |s|
   s.name = %q{kafka-rb}
-  s.version = "0.0.11"
+  s.version = "0.0.12"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Alejandro Crosa", "Stefan Mees", "Tim Lossen", "Liam Stewart"]
@@ -34,6 +34,7 @@ spec = Gem::Specification.new do |s|
   s.homepage = %q{http://github.com/acrosa/kafka-rb}
   s.require_paths = ["lib"]
   s.summary = %q{A Ruby client for the Kafka distributed publish/subscribe messaging service}
+  s.add_dependency('snappy', '>= 0.0.4')
 
   if s.respond_to? :specification_version then
     current_version = Gem::Specification::CURRENT_SPECIFICATION_VERSION

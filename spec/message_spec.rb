@@ -16,6 +16,10 @@ require File.dirname(__FILE__) + '/spec_helper'
 
 describe Message do
 
+  def pack_v1_message bytes, attributes
+    [6 + bytes.length, 1, attributes, Zlib.crc32(bytes), bytes].pack "NCCNa*"
+  end
+
   before(:each) do
     @message = Message.new
   end
@@ -120,7 +124,17 @@ describe Message do
       message.payload.should == 'abracadabra'
     end
 
-    it "should recursively parse nested compressed messages" do
+    it "should parse a snappy-compressed message" do
+      cleartext = "abracadabra"
+      bytes = pack_v1_message cleartext, 0
+      compressed = Snappy.deflate(bytes)
+      bytes = pack_v1_message compressed, 2
+      message = Message.parse_from(bytes).messages.first
+      message.should be_valid
+      message.payload.should == cleartext
+    end
+
+    it "should recursively parse nested gzip compressed messages" do
       uncompressed = [17, 1, 0, 401275319, 'abracadabra'].pack('NCCNa*')
       uncompressed << [12, 1, 0, 2666930069, 'foobar'].pack('NCCNa*')
       compressed_io = StringIO.new('')
@@ -132,7 +146,16 @@ describe Message do
       messages.map(&:valid?).should == [true, true]
     end
 
-    it "should support a mixture of compressed and uncompressed messages" do
+    it "should recursively parse nested snappy compressed messages" do
+      uncompressed = pack_v1_message('abracadabra', 0)
+      uncompressed << pack_v1_message('foobar', 0)
+      compressed = pack_v1_message(Snappy.deflate(uncompressed), 2)
+      messages = Message.parse_from(compressed).messages
+      messages.map(&:payload).should == ['abracadabra', 'foobar']
+      messages.map(&:valid?).should == [true, true]
+    end
+
+    it "should support a mixture of gzip compressed and uncompressed messages" do
       compressed = 'H4sIAG0LI1AAA2NgYBBkZBB/9XN7YlJRYnJiCogCAH9lueQVAAAA'.unpack('m*').shift
       bytes = [45, 1, 1, 1303540914, compressed].pack('NCCNa*')
       bytes << [11, 1, 0, 907060870, 'hello'].pack('NCCNa*')
@@ -141,8 +164,16 @@ describe Message do
       messages.map(&:valid?).should == [true, true]
     end
 
+    it "should support a mixture of snappy compressed and uncompressed messages" do
+      bytes = pack_v1_message(Snappy.deflate(pack_v1_message("compressed", 0)), 2)
+      bytes << pack_v1_message('uncompressed', 0)
+      messages = Message.parse_from(bytes).messages
+      messages.map(&:payload).should == ["compressed", "uncompressed"]
+      messages.map(&:valid?).should == [true, true]
+    end
+
     it "should raise an error if the compression codec is not supported" do
-      bytes = [6, 1, 2, 0, ''].pack('NCCNa*') # 2 = Snappy codec
+      bytes = [6, 1, 3, 0, ''].pack('NCCNa*') # 3 = some unknown future compression codec
       lambda {
         Kafka::Message.parse_from(bytes)
       }.should raise_error(RuntimeError, /Unsupported Kafka compression codec/)

@@ -91,11 +91,13 @@ module Kafka
             message_set = parse_from(uncompressed)
             raise 'malformed compressed message' if message_set.size != uncompressed.size
             messages.concat(message_set.messages)
+            when 2 # a snappy-compresses message set -- parse recursively
+            uncompressed = Snappy::Reader.new(StringIO.new(payload)).read
+            message_set = parse_from(uncompressed)
+            raise 'malformed compressed message' if message_set.size != uncompressed.size
+            messages.concat(message_set.messages)
           else
             # https://cwiki.apache.org/confluence/display/KAFKA/Compression
-            # claims that 2 is for Snappy compression, but Kafka's Scala client
-            # implementation doesn't seem to support it yet, so I don't have
-            # a reference implementation to test against.
             raise "Unsupported Kafka compression codec: #{attributes & COMPRESSION_CODEC_MASK}"
           end
 
