@@ -32,7 +32,7 @@ describe MultiProducer do
       encoded = Kafka::Encoder.produce("test", 0, message)
 
       subject.should_receive(:write).with(encoded).and_return(encoded.length)
-      subject.send("test", message, partition: 0).should == encoded.length
+      subject.send("test", message, :partition => 0).should == encoded.length
     end
 
     it "sends multiple messages" do

@@ -135,7 +135,7 @@ describe Encoder do
       messages = [Kafka::Message.new("ale"), Kafka::Message.new("beer")]
       bytes = described_class.multiproduce([
           Kafka::ProducerRequest.new("test", messages[0]),
-          Kafka::ProducerRequest.new("topic", messages[1], partition: 1),
+          Kafka::ProducerRequest.new("topic", messages[1], :partition => 1),
         ])
 
       req_length = bytes[0, 4].unpack("N").shift
