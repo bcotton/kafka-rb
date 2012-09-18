@@ -47,6 +47,54 @@ describe Encoder do
     end
   end
 
+  describe :compression do
+    before do
+      @message = Kafka::Message.new "foo"
+    end
+
+    it "should default to no compression" do
+      msg = "foo"
+      checksum = Zlib.crc32 msg
+      magic = 0
+      msg_size = 5 + msg.size
+      raw = [msg_size, magic, checksum, msg].pack "NCNa#{msg.size}"
+
+      Encoder.message(@message).should == raw
+    end
+
+    it "should support GZip compression" do
+      buffer = StringIO.new
+      gz = Zlib::GzipWriter.new buffer, nil, nil
+      gz.write "foo"
+      gz.close
+      buffer.rewind
+      msg = buffer.string
+      checksum = Zlib.crc32 msg
+      magic = 1
+      attrs = 1
+      msg_size = 6 + msg.size
+      raw = [msg_size, magic, attrs, checksum, msg].pack "NCCNa#{msg.size}"
+      Encoder.message(@message, 1).should == raw
+    end
+
+    it "should support Snappy compression" do
+      buffer = StringIO.new
+      Snappy::Writer.new buffer do |w|
+        w << "foo"
+      end
+      buffer.rewind
+      msg = buffer.string
+      checksum = Zlib.crc32 msg
+      magic = 1
+      attrs = 2
+      msg_size = 6 + msg.size
+      raw = [msg_size, magic, attrs, checksum, msg].pack "NCCNa#{msg.size}"
+
+      Encoder.message(@message, 2).should == raw
+    end
+
+  end
+
   describe "produce" do
     it "should binary encode an empty request" do
       bytes = described_class.produce("test", 0, [])

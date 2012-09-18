@@ -33,6 +33,10 @@ module Kafka
   class Message
 
     MAGIC_IDENTIFIER_DEFAULT = 0
+    MAGIC_IDENTIFIER_COMPRESSION = 1
+    NO_COMPRESSION = 0
+    GZIP_COMPRESSION = 1
+    SNAPPY_COMPRESSION = 2
     BASIC_MESSAGE_HEADER = 'NC'.freeze
     VERSION_0_HEADER = 'N'.freeze
     VERSION_1_HEADER = 'CN'.freeze
@@ -41,9 +45,10 @@ module Kafka
     attr_accessor :magic, :checksum, :payload
 
     def initialize(payload = nil, magic = MAGIC_IDENTIFIER_DEFAULT, checksum = nil)
-      self.magic    = magic
-      self.payload  = payload || ""
-      self.checksum = checksum || self.calculate_checksum
+      self.magic       = magic
+      self.payload     = payload || ""
+      self.checksum    = checksum || self.calculate_checksum
+      @compression = NO_COMPRESSION
     end
 
     def calculate_checksum
@@ -66,7 +71,7 @@ module Kafka
         break if bytes_processed + message_size + 4 > data.length # message is truncated
 
         case magic
-        when 0
+        when MAGIC_IDENTIFIER_DEFAULT
           # |  0  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9      ...
           # |                       |     |                       |
           # |      message_size     |magic|        checksum       | payload ...
@@ -75,7 +80,7 @@ module Kafka
           payload  = data[bytes_processed + 9, payload_size]
           messages << Kafka::Message.new(payload, magic, checksum)
 
-        when 1
+        when MAGIC_IDENTIFIER_COMPRESSION
           # |  0  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  | 10      ...
           # |                       |     |     |                       |
           # |         size          |magic|attrs|        checksum       | payload ...
@@ -84,14 +89,14 @@ module Kafka
           payload = data[bytes_processed + 10, payload_size]
 
           case attributes & COMPRESSION_CODEC_MASK
-          when 0 # a single uncompressed message
+          when NO_COMPRESSION # a single uncompressed message
             messages << Kafka::Message.new(payload, magic, checksum)
-          when 1 # a gzip-compressed message set -- parse recursively
+          when GZIP_COMPRESSION # a gzip-compressed message set -- parse recursively
             uncompressed = Zlib::GzipReader.new(StringIO.new(payload)).read
             message_set = parse_from(uncompressed)
             raise 'malformed compressed message' if message_set.size != uncompressed.size
             messages.concat(message_set.messages)
-            when 2 # a snappy-compresses message set -- parse recursively
+          when SNAPPY_COMPRESSION # a snappy-compresses message set -- parse recursively
             uncompressed = Snappy::Reader.new(StringIO.new(payload)).read
             message_set = parse_from(uncompressed)
             raise 'malformed compressed message' if message_set.size != uncompressed.size
@@ -110,10 +115,78 @@ module Kafka
 
       MessageSet.new(bytes_processed, messages)
     end
-  end
 
-  # Encapsulates a list of Kafka messages (as Kafka::Message objects in the
-  # +messages+ attribute) and their total serialized size in bytes (the +size+
-  # attribute).
-  class MessageSet < Struct.new(:size, :messages); end
+    def encode(compression = NO_COMPRESSION)
+      @compression = compression
+
+      self.payload = asciify_payload
+      self.payload = compress_payload if compression?
+
+      data = magic_and_compression + [calculate_checksum].pack("N") + payload
+      [data.length].pack("N") + data
+    end
+
+
+    # Encapsulates a list of Kafka messages (as Kafka::Message objects in the
+    # +messages+ attribute) and their total serialized size in bytes (the +size+
+    # attribute).
+    class MessageSet < Struct.new(:size, :messages); end
+
+    private
+
+    attr_reader :compression
+
+    def compression?
+      compression != NO_COMPRESSION
+    end
+
+    def magic_and_compression
+      if compression?
+        [MAGIC_IDENTIFIER_COMPRESSION, compression].pack("CC")
+      else
+        [MAGIC_IDENTIFIER_DEFAULT].pack("C")
+      end
+    end
+
+    def asciify_payload
+      if RUBY_VERSION[0, 3] == "1.8" # Use old iconv on Ruby 1.8 for encoding
+        Iconv.new('UTF-8//IGNORE', 'UTF-8').iconv(payload.to_s)
+      else
+        payload.to_s.force_encoding(Encoding::ASCII_8BIT)
+      end
+    end
+
+    def compress_payload
+      case compression
+        when GZIP_COMPRESSION
+          gzip
+        when SNAPPY_COMPRESSION
+          snappy
+      end
+    end
+
+    def gzip
+      with_buffer do |buffer|
+        gz = Zlib::GzipWriter.new buffer, nil, nil
+        gz.write payload
+        gz.close
+      end
+    end
+
+    def snappy
+      with_buffer do |buffer|
+        Snappy::Writer.new buffer do |w|
+          w << payload
+        end
+      end
+    end
+
+    def with_buffer
+      buffer = StringIO.new
+      yield buffer if block_given?
+      buffer.rewind
+      buffer.string
+    end
+  end
 end
+
