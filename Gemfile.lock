@@ -1,6 +1,7 @@
 GIT
   remote: git://github.com/watersofoblivion/snappy.git
-  revision: edfca68d9b513102e62496e04cb1198cb94ef359
+  revision: 5497c71a845ad676b88fbdb6ea710715bbc45767
+  branch: snappy-streaming
   specs:
     snappy (0.0.4)
 

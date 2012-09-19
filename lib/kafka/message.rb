@@ -183,6 +183,7 @@ module Kafka
 
     def with_buffer
       buffer = StringIO.new
+      buffer.set_encoding Encoding::ASCII_8BIT unless RUBY_VERSION =~ /^1\.8/
       yield buffer if block_given?
       buffer.rewind
       buffer.string

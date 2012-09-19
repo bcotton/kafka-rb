@@ -4,4 +4,4 @@ source 'https://rubygems.org'
 gemspec
 
 gem "rake"
-gem "snappy", :git => "git://github.com/watersofoblivion/snappy.git"
+gem "snappy", :git => "git://github.com/watersofoblivion/snappy.git", :branch => "snappy-streaming"
