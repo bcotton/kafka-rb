@@ -30,12 +30,6 @@ task :install => [:package] do
   sh %{sudo gem install pkg/#{GEM}-#{GEM_VERSION}}
 end
 
-desc "Run all examples with RCov"
-RSpec::Core::RakeTask.new(:rcov) do |t|
-  t.pattern = FileList['spec/**/*_spec.rb']
-  t.rcov = true
-end
-
 desc "Run specs"
 RSpec::Core::RakeTask.new do |t|
   t.pattern = FileList['spec/**/*_spec.rb']
