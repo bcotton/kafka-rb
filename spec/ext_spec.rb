@@ -14,7 +14,25 @@
 # limitations under the License.
 require File.dirname(__FILE__) + '/spec_helper'
 
-describe Kafka do
-  before(:each) do
+describe Object do
+  before { Kafka::Ext.instance_variable_set :@snappy, nil }
+
+  describe "#ensure_snappy!" do
+    before { Kafka::Ext.instance_variable_set :@snappy, nil }
+
+    subject { ensure_snappy! { 42 } }
+    
+    context "when snappy is available" do
+      before { Object.stub! :const_defined? => true }
+      it { should == 42 }
+    end
+    
+    context "when snappy is not available" do
+      before { Object.stub! :const_defined? => false }
+      
+      it "raises an error" do
+        expect { ensure_snappy! { 42 } }.to raise_error
+      end
+    end
   end
 end

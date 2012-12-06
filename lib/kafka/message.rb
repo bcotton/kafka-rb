@@ -97,10 +97,12 @@ module Kafka
             raise 'malformed compressed message' if message_set.size != uncompressed.size
             messages.concat(message_set.messages)
           when SNAPPY_COMPRESSION # a snappy-compresses message set -- parse recursively
-            uncompressed = Snappy::Reader.new(StringIO.new(payload)).read
-            message_set = parse_from(uncompressed)
-            raise 'malformed compressed message' if message_set.size != uncompressed.size
-            messages.concat(message_set.messages)
+            ensure_snappy! do
+              uncompressed = Snappy::Reader.new(StringIO.new(payload)).read
+              message_set = parse_from(uncompressed)
+              raise 'malformed compressed message' if message_set.size != uncompressed.size
+              messages.concat(message_set.messages)
+            end
           else
             # https://cwiki.apache.org/confluence/display/KAFKA/Compression
             raise "Unsupported Kafka compression codec: #{attributes & COMPRESSION_CODEC_MASK}"
@@ -174,9 +176,11 @@ module Kafka
     end
 
     def snappy
-      with_buffer do |buffer|
-        Snappy::Writer.new buffer do |w|
-          w << payload
+      ensure_snappy! do
+        with_buffer do |buffer|
+          Snappy::Writer.new buffer do |w|
+            w << payload
+          end
         end
       end
     end
